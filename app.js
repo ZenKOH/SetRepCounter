@@ -612,11 +612,11 @@
     updateWorkoutHeader();
     beep(920, 0.06);
 
-    // The rep number is spoken before the tempo clock starts.
-    // On the first rep of a set, say "Set N. N"; otherwise say only the rep number.
+    // The rep is announced before the tempo clock starts.
+    // On the first rep of a set, say "Set N. Rep N"; otherwise say "Rep N".
     const leadIn = currentRep === 1
-      ? "Set " + currentSet + ". " + currentRep
-      : String(currentRep);
+      ? "Set " + currentSet + ". Rep " + currentRep
+      : "Rep " + currentRep;
 
     setStatus("REP " + currentRep, "Get ready", "Rep " + currentRep);
     speakRepLeadIn(leadIn, () => {
