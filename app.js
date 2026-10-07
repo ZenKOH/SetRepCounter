@@ -596,15 +596,17 @@
     currentPhaseIndex = -1;
     updateWorkoutHeader();
 
-    // Rep count stays numeric-only. Give it a little more breathing room
-    // before the first tempo number so every cue is intelligible.
+    // Announce the set first, then keep the rep itself numeric-only.
+    if (currentRep === 1) speak("Set " + currentSet);
+
+    // Give the rep number extra breathing room before the first tempo second.
     queueNumericCue(currentRep, 320);
 
     beep(920, 0.06);
-    beginPhase(0, currentRep === 1);
+    beginPhase(0);
   }
 
-  function beginPhase(index, announceSet = false) {
+  function beginPhase(index) {
     const item = currentItem();
     const tempo = parseTempo(item.tempo) || parseTempo("3-1-1-1");
     let next = index;
@@ -620,11 +622,6 @@
     const phase = PHASES[next];
 
     setStatus(part.explosive ? "EXPLODE" : phase.label, "Working", phase.label);
-
-    if (announceSet && currentRep === 1) {
-      // Keep the set announcement, but never prefix the rep or tempo numbers with words.
-      speak("Set " + currentSet);
-    }
 
     // First number for the phase is queued immediately; subsequent seconds are queued
     // by maybeSpeakCountdown(). Nothing is dropped if the speech engine is still busy.
