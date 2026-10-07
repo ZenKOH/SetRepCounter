@@ -51,6 +51,10 @@
     sets: document.getElementById("sets"),
     reps: document.getElementById("reps"),
     tempo: document.getElementById("tempo"),
+    tempoPhase0: document.getElementById("tempoPhase0"),
+    tempoPhase1: document.getElementById("tempoPhase1"),
+    tempoPhase2: document.getElementById("tempoPhase2"),
+    tempoPhase3: document.getElementById("tempoPhase3"),
     restSeconds: document.getElementById("restSeconds"),
     circuitList: document.getElementById("circuitList"),
     addExerciseButton: document.getElementById("addExerciseButton"),
@@ -115,6 +119,41 @@
   function normaliseTempo(value) {
     const parsed = parseTempo(value);
     return parsed ? parsed.map((part) => part.token).join("-") : "3-1-1-1";
+  }
+
+  function phaseInputs() {
+    return [els.tempoPhase0, els.tempoPhase1, els.tempoPhase2, els.tempoPhase3];
+  }
+
+  function syncSinglePhaseInputsFromTempo() {
+    const parts = parseTempo(els.tempo.value) || parseTempo("3-1-1-1");
+    phaseInputs().forEach((input, index) => {
+      input.value = parts[index].token;
+      input.classList.remove("invalid");
+    });
+  }
+
+  function sanitiseTempoToken(value) {
+    const token = String(value || "").trim().toUpperCase();
+    if (token === "X") return "X";
+    const n = Number.parseInt(token, 10);
+    if (!Number.isFinite(n)) return "0";
+    return String(clamp(n, 0, 30));
+  }
+
+  function syncSingleTempoFromPhaseInputs(saveNow) {
+    const tokens = phaseInputs().map((input) => sanitiseTempoToken(input.value));
+    phaseInputs().forEach((input, index) => { input.value = tokens[index]; });
+    let candidate = tokens.join("-");
+    if (!parseTempo(candidate)) {
+      tokens[0] = "1";
+      els.tempoPhase0.value = "1";
+      candidate = tokens.join("-");
+    }
+    els.tempo.value = candidate;
+    els.tempo.classList.remove("invalid");
+    if (saveNow) saveSettings();
+    else updateEstimate();
   }
 
   function tempoSeconds(value) {
@@ -226,6 +265,7 @@
         }
       } catch (_) {}
     }
+    syncSinglePhaseInputsFromTempo();
   }
 
   function setMode(nextMode, persist = true) {
@@ -242,6 +282,8 @@
   function renderCircuit() {
     els.circuitList.innerHTML = "";
     circuit.forEach((item, index) => {
+      const tempoParts = parseTempo(item.tempo) || parseTempo("3-1-1-1");
+      const tempoCode = tempoParts.map((part) => part.token).join("-");
       const card = document.createElement("div");
       card.className = "circuit-card";
       card.dataset.index = String(index);
@@ -259,11 +301,35 @@
         '<div class="circuit-grid">' +
           circuitField("Sets", "sets", safeInt(item.sets, LIMITS.sets), "number") +
           circuitField("Reps", "reps", safeInt(item.reps, LIMITS.reps), "number") +
-          circuitField("Tempo", "tempo", normaliseTempo(item.tempo), "text") +
-          circuitField("Rest sec", "rest", safeInt(item.rest, LIMITS.restSeconds), "number") +
+        '</div>' +
+        '<div class="circuit-timing-box">' +
+          '<div class="circuit-timing-title"><strong>REP TEMPO</strong><span data-tempo-code>' + escapeHtml(tempoCode) + '</span></div>' +
+          '<div class="circuit-tempo-adjust">' +
+            circuitTempoPart("Lower", 0, tempoParts[0].token) +
+            circuitTempoPart("Bottom", 1, tempoParts[1].token) +
+            circuitTempoPart("Lift", 2, tempoParts[2].token) +
+            circuitTempoPart("Top", 3, tempoParts[3].token) +
+          '</div>' +
+          '<div class="circuit-rest-row"><label>REST BETWEEN SETS / NEXT EXERCISE</label>' +
+            '<div class="rest-stepper">' +
+              '<button type="button" data-circuit-rest-delta="-5">−5</button>' +
+              '<button type="button" data-circuit-rest-delta="-1">−1</button>' +
+              '<input type="number" inputmode="numeric" min="0" max="600" data-field="rest" value="' + safeInt(item.rest, LIMITS.restSeconds) + '" />' +
+              '<button type="button" data-circuit-rest-delta="1">+1</button>' +
+              '<button type="button" data-circuit-rest-delta="5">+5</button>' +
+            '</div></div>' +
         '</div>';
       els.circuitList.appendChild(card);
     });
+  }
+
+  function circuitTempoPart(label, phaseIndex, token) {
+    return '<div class="circuit-tempo-part"><label>' + label + '</label>' +
+      '<div class="circuit-mini-stepper">' +
+        '<button type="button" data-circuit-tempo-delta="-1" data-phase-index="' + phaseIndex + '">−</button>' +
+        '<input type="text" inputmode="' + (phaseIndex === 2 ? 'text' : 'numeric') + '" data-tempo-part="' + phaseIndex + '" value="' + escapeHtml(token) + '" />' +
+        '<button type="button" data-circuit-tempo-delta="1" data-phase-index="' + phaseIndex + '">+</button>' +
+      '</div></div>';
   }
 
   function circuitField(label, field, value, type) {
@@ -276,6 +342,28 @@
     return value.replace(/[&<>"']/g, (char) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
     })[char]);
+  }
+
+  function syncCircuitTempoFromCard(card, index, saveNow) {
+    const inputs = Array.from(card.querySelectorAll("[data-tempo-part]"))
+      .sort((a, b) => Number(a.dataset.tempoPart) - Number(b.dataset.tempoPart));
+    if (inputs.length !== 4) return;
+    const tokens = inputs.map((input) => sanitiseTempoToken(input.value));
+    inputs.forEach((input, i) => {
+      input.value = tokens[i];
+      input.classList.remove("invalid");
+    });
+    let candidate = tokens.join("-");
+    if (!parseTempo(candidate)) {
+      tokens[0] = "1";
+      inputs[0].value = "1";
+      candidate = tokens.join("-");
+    }
+    circuit[index].tempo = candidate;
+    const code = card.querySelector("[data-tempo-code]");
+    if (code) code.textContent = candidate;
+    if (saveNow) saveSettings();
+    else updateEstimate();
   }
 
   function updateTempoUI(tempo, activeIndex = -1) {
@@ -730,16 +818,41 @@
     });
   });
 
+  document.querySelectorAll("[data-tempo-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (state !== "idle" && state !== "complete") return;
+      const index = Number(button.dataset.tempoStep);
+      const input = phaseInputs()[index];
+      const delta = Number(button.dataset.delta);
+      const current = input.value.trim().toUpperCase() === "X" ? 1 : Number.parseInt(input.value, 10) || 0;
+      input.value = String(clamp(current + delta, 0, 30));
+      syncSingleTempoFromPhaseInputs(true);
+    });
+  });
+
   [els.exerciseName, els.sets, els.reps, els.restSeconds].forEach((input) => {
     input.addEventListener("change", saveSettings);
     input.addEventListener("blur", saveSettings);
   });
 
-  els.tempo.addEventListener("input", () => {
-    els.tempo.classList.toggle("invalid", !parseTempo(els.tempo.value));
-    if (parseTempo(els.tempo.value)) updateEstimate();
+  phaseInputs().forEach((input) => {
+    input.addEventListener("change", () => syncSingleTempoFromPhaseInputs(true));
+    input.addEventListener("blur", () => syncSingleTempoFromPhaseInputs(true));
   });
-  els.tempo.addEventListener("blur", saveSettings);
+
+  els.tempo.addEventListener("input", () => {
+    const valid = parseTempo(els.tempo.value);
+    els.tempo.classList.toggle("invalid", !valid);
+    if (valid) {
+      syncSinglePhaseInputsFromTempo();
+      updateEstimate();
+    }
+  });
+  els.tempo.addEventListener("blur", () => {
+    els.tempo.value = normaliseTempo(els.tempo.value);
+    syncSinglePhaseInputsFromTempo();
+    saveSettings();
+  });
 
   [els.voiceEnabled, els.speakTiming, els.startCountdown, els.beepEnabled].forEach((input) => {
     input.addEventListener("change", saveSettings);
@@ -756,20 +869,57 @@
 
   els.circuitList.addEventListener("input", (event) => {
     const card = event.target.closest(".circuit-card");
-    const field = event.target.dataset.field;
-    if (!card || !field) return;
+    if (!card) return;
     const index = Number(card.dataset.index);
+
+    if (event.target.dataset.tempoPart !== undefined) {
+      syncCircuitTempoFromCard(card, index, false);
+      return;
+    }
+
+    const field = event.target.dataset.field;
+    if (!field) return;
     circuit[index][field] = event.target.value;
-    if (field === "tempo") event.target.classList.toggle("invalid", !parseTempo(event.target.value));
     updateEstimate();
   });
 
-  els.circuitList.addEventListener("change", saveSettings);
-  els.circuitList.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-action]");
+  els.circuitList.addEventListener("change", (event) => {
     const card = event.target.closest(".circuit-card");
-    if (!button || !card) return;
+    if (card && event.target.dataset.tempoPart !== undefined) {
+      syncCircuitTempoFromCard(card, Number(card.dataset.index), true);
+      return;
+    }
+    saveSettings();
+  });
+
+  els.circuitList.addEventListener("click", (event) => {
+    const card = event.target.closest(".circuit-card");
+    if (!card) return;
     const index = Number(card.dataset.index);
+
+    const tempoButton = event.target.closest("[data-circuit-tempo-delta]");
+    if (tempoButton) {
+      const phaseIndex = Number(tempoButton.dataset.phaseIndex);
+      const input = card.querySelector('[data-tempo-part="' + phaseIndex + '"]');
+      const delta = Number(tempoButton.dataset.circuitTempoDelta);
+      const current = input.value.trim().toUpperCase() === "X" ? 1 : Number.parseInt(input.value, 10) || 0;
+      input.value = String(clamp(current + delta, 0, 30));
+      syncCircuitTempoFromCard(card, index, true);
+      return;
+    }
+
+    const restButton = event.target.closest("[data-circuit-rest-delta]");
+    if (restButton) {
+      const input = card.querySelector('[data-field="rest"]');
+      const delta = Number(restButton.dataset.circuitRestDelta);
+      input.value = String(clamp((Number.parseInt(input.value, 10) || 0) + delta, 0, 600));
+      circuit[index].rest = input.value;
+      saveSettings();
+      return;
+    }
+
+    const button = event.target.closest("[data-action]");
+    if (!button) return;
     const action = button.dataset.action;
     if (action === "remove" && circuit.length > 1) circuit.splice(index, 1);
     if (action === "duplicate") circuit.splice(index + 1, 0, { ...circuit[index] });

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1220" />
   <meta name="description" content="Set, rep, tempo and circuit training counter with spoken phase cues." />
   <title>Set & Rep Tempo Trainer</title>
-  <link rel="stylesheet" href="style.css?v=20261007-tempo1" />
+  <link rel="stylesheet" href="style.css?v=20261007-adjust1" />
 </head>
 <body>
   <main class="app-shell">
@@ -119,15 +119,52 @@
               <label for="tempo">Rep tempo</label>
               <span class="setting-help">Lower · bottom hold · lift · top hold</span>
             </div>
-            <input id="tempo" class="tempo-input" type="text" inputmode="text" value="3-1-1-1" aria-label="Rep tempo" />
+            <input id="tempo" class="tempo-input" type="text" inputmode="text" value="3-1-1-1" aria-label="Rep tempo code" />
           </div>
 
-          <div class="setting-row">
-            <div><label for="restSeconds">Rest between sets</label><span class="setting-help">Seconds</span></div>
-            <div class="stepper">
-              <button type="button" data-stepper="restSeconds" data-delta="-5">−</button>
-              <input id="restSeconds" type="number" inputmode="numeric" min="0" max="600" step="5" value="30" />
-              <button type="button" data-stepper="restSeconds" data-delta="5">+</button>
+          <div id="singleTempoEditor" class="tempo-adjust-grid" aria-label="Adjust rep tempo timing">
+            <div class="tempo-adjust-item">
+              <span>LOWER</span>
+              <div class="phase-stepper">
+                <button type="button" data-tempo-step="0" data-delta="-1" aria-label="Decrease lowering time">−</button>
+                <input id="tempoPhase0" type="text" inputmode="numeric" value="3" aria-label="Lowering seconds" />
+                <button type="button" data-tempo-step="0" data-delta="1" aria-label="Increase lowering time">+</button>
+              </div>
+            </div>
+            <div class="tempo-adjust-item">
+              <span>BOTTOM</span>
+              <div class="phase-stepper">
+                <button type="button" data-tempo-step="1" data-delta="-1" aria-label="Decrease bottom hold time">−</button>
+                <input id="tempoPhase1" type="text" inputmode="numeric" value="1" aria-label="Bottom hold seconds" />
+                <button type="button" data-tempo-step="1" data-delta="1" aria-label="Increase bottom hold time">+</button>
+              </div>
+            </div>
+            <div class="tempo-adjust-item">
+              <span>LIFT</span>
+              <div class="phase-stepper">
+                <button type="button" data-tempo-step="2" data-delta="-1" aria-label="Decrease lifting time">−</button>
+                <input id="tempoPhase2" type="text" inputmode="text" value="1" aria-label="Lifting seconds or X" />
+                <button type="button" data-tempo-step="2" data-delta="1" aria-label="Increase lifting time">+</button>
+              </div>
+            </div>
+            <div class="tempo-adjust-item">
+              <span>TOP</span>
+              <div class="phase-stepper">
+                <button type="button" data-tempo-step="3" data-delta="-1" aria-label="Decrease top hold time">−</button>
+                <input id="tempoPhase3" type="text" inputmode="numeric" value="1" aria-label="Top hold seconds" />
+                <button type="button" data-tempo-step="3" data-delta="1" aria-label="Increase top hold time">+</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-row rest-setting">
+            <div><label for="restSeconds">Rest between sets</label><span class="setting-help">Adjust by 1 or 5 seconds</span></div>
+            <div class="rest-stepper">
+              <button type="button" data-stepper="restSeconds" data-delta="-5" aria-label="Decrease rest by 5 seconds">−5</button>
+              <button type="button" data-stepper="restSeconds" data-delta="-1" aria-label="Decrease rest by 1 second">−1</button>
+              <input id="restSeconds" type="number" inputmode="numeric" min="0" max="600" step="1" value="30" />
+              <button type="button" data-stepper="restSeconds" data-delta="1" aria-label="Increase rest by 1 second">+1</button>
+              <button type="button" data-stepper="restSeconds" data-delta="5" aria-label="Increase rest by 5 seconds">+5</button>
             </div>
           </div>
         </div>
@@ -178,6 +215,6 @@
     </footer>
   </main>
 
-  <script src="app.js?v=20261007-tempo1"></script>
+  <script src="app.js?v=20261007-adjust1"></script>
 </body>
 </html>
