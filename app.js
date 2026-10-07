@@ -44,6 +44,8 @@
   let audioContext = null;
   let wakeLock = null;
   let phaseStartedAt = 0;
+  let speechUnlocked = !isIOS;
+  let speechTestTimer = null;
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const isStandaloneIOS = isIOS && window.navigator.standalone === true;
@@ -141,17 +143,22 @@
   function speak(text, { force = false, timingCue = false, replace = false } = {}) {
     const enabled = force || (config ? config.voiceEnabled : els.voiceEnabled.checked);
     if (!enabled || !("speechSynthesis" in window)) return false;
+    if (isIOS && !speechUnlocked && !force) return false;
 
     if (timingCue && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
       return false;
     }
 
-    if (replace) window.speechSynthesis.cancel();
-    window.speechSynthesis.resume();
+    // Avoid cancel() on iOS. Safari/WebKit has had a bug where cancel() can
+    // remove an utterance queued immediately afterwards.
+    if (replace && !isIOS) window.speechSynthesis.cancel();
+    if (!isIOS) window.speechSynthesis.resume();
 
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = getVoice();
-    if (voice) utterance.voice = voice;
+    if (voice && !isIOS) utterance.voice = voice;
+    utterance.lang = "en-US";
+    utterance.volume = 1;
     utterance.rate = 0.95;
     utterance.pitch = 1;
     window.speechSynthesis.speak(utterance);
@@ -179,18 +186,56 @@
     if (audioContext && audioContext.state === "suspended") {
       audioContext.resume().catch(() => {});
     }
+  }
 
-    if (isIOS && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.resume();
-
-      // Mobile Safari requires the first utterance to originate in a user gesture
-      // before later timer-driven utterances are dependable.
-      const unlock = new SpeechSynthesisUtterance(" ");
-      unlock.volume = 0.01;
-      unlock.rate = 1;
-      window.speechSynthesis.speak(unlock);
+  function testSpeechFromUserGesture() {
+    if (!("speechSynthesis" in window)) {
+      els.soundTest.textContent = "Voice unavailable";
+      setStatus("READY", "Voice unavailable", "Speech synthesis is not available in this browser.");
+      return;
     }
+
+    primeIOSAudio();
+
+    // Do not cancel, resume, delay or queue another utterance first.
+    // On iPhone the first audible utterance must originate directly in this tap.
+    const utterance = new SpeechSynthesisUtterance("Voice counter ready");
+    utterance.lang = "en-US";
+    utterance.volume = 1;
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+
+    let started = false;
+    clearTimeout(speechTestTimer);
+    els.soundTest.textContent = "Testing sound…";
+    setStatus("READY", "Testing voice", "Testing iPhone voice output.");
+
+    utterance.onstart = () => {
+      started = true;
+      speechUnlocked = true;
+      els.soundTest.textContent = "Sound enabled ✓";
+      setStatus("READY", "Voice enabled", "Voice counter ready.");
+    };
+
+    utterance.onend = () => {
+      speechUnlocked = true;
+      els.soundTest.textContent = "Sound enabled ✓";
+      setStatus("READY", "Voice enabled", "Voice counter ready.");
+    };
+
+    utterance.onerror = () => {
+      els.soundTest.textContent = "Retry sound";
+      setStatus("READY", "Voice blocked", "Safari did not play the voice. Check iPhone volume and Silent Mode, then tap Retry sound.");
+    };
+
+    window.speechSynthesis.speak(utterance);
+
+    speechTestTimer = setTimeout(() => {
+      if (!started && !window.speechSynthesis.speaking) {
+        els.soundTest.textContent = "Retry sound";
+        setStatus("READY", "Voice blocked", "Safari suppressed the speech request. Check Silent Mode and volume, then tap Retry sound.");
+      }
+    }, 1200);
   }
 
   function ensureAudio() {
@@ -401,9 +446,21 @@
   }
 
   function startWorkout() {
-    stopSpeech();
+    if (!isIOS) stopSpeech();
     config = readConfig();
     primeIOSAudio();
+
+    // Starting the workout is also a user gesture. If the user skipped the
+    // sound-test button, unlock voice here with a direct audible cue.
+    if (isIOS && config.voiceEnabled && !speechUnlocked && "speechSynthesis" in window) {
+      const unlockUtterance = new SpeechSynthesisUtterance("Ready");
+      unlockUtterance.lang = "en-US";
+      unlockUtterance.volume = 1;
+      unlockUtterance.rate = 0.95;
+      unlockUtterance.onstart = () => { speechUnlocked = true; };
+      unlockUtterance.onend = () => { speechUnlocked = true; };
+      window.speechSynthesis.speak(unlockUtterance);
+    }
     currentSet = 1;
     currentRep = 0;
     pausedState = null;
@@ -500,21 +557,18 @@
   });
   els.resetButton.addEventListener("click", resetWorkout);
   els.soundTest.addEventListener("click", () => {
-    stopSpeech();
-    primeIOSAudio();
-
     if (isIOS && !isSafariIOS) {
-      alert("For reliable spoken cues on iPhone, open this page directly in Safari. In-app browsers and some iOS browsers can expose Web Speech without actually playing it.");
+      alert("For reliable spoken cues on iPhone, open this page directly in Safari.");
+      return;
     }
 
-    speak("Voice counter ready.", { force: true, replace: true });
-    if (els.beepEnabled.checked) {
-      ensureAudio();
-      const saved = config;
-      config = { beepEnabled: true };
-      beep(880, 0.08);
-      config = saved;
+    if (isIOS) {
+      testSpeechFromUserGesture();
+      return;
     }
+
+    stopSpeech();
+    speak("Voice counter ready.", { force: true });
   });
 
   document.addEventListener("keydown", (event) => {
@@ -555,6 +609,6 @@
   resetWorkout();
 
   if (isIOS) {
-    els.soundTest.textContent = isSafariIOS ? "Enable / test sound" : "Open in Safari for voice";
+    els.soundTest.textContent = isSafariIOS ? "Test iPhone voice" : "Open in Safari for voice";
   }
 })();
