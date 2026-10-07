@@ -547,10 +547,10 @@
     currentPhaseIndex = -1;
     updateWorkoutHeader();
     beep(920, 0.06);
-    beginPhase(0, currentRep === 1);
+    beginPhase(0, true, currentRep === 1);
   }
 
-  function beginPhase(index, announceSet = false) {
+  function beginPhase(index, firstPhaseOfRep = false, announceSet = false) {
     const item = currentItem();
     const tempo = parseTempo(item.tempo) || parseTempo("3-1-1-1");
     let next = index;
@@ -564,12 +564,18 @@
     updateWorkoutHeader();
     const part = tempo[next];
     const phase = PHASES[next];
+    const phaseCue = part.explosive ? "X" : String(part.seconds);
     const setPrefix = announceSet ? "Set " + currentSet + ". " : "";
-    const voiceCue = part.explosive
-      ? setPrefix + "Explode"
-      : setPrefix + phase.voice + ". " + part.seconds;
+    const voiceCue = firstPhaseOfRep
+      ? setPrefix + currentRep + ". " + phaseCue
+      : phaseCue;
+
     setStatus(part.explosive ? "EXPLODE" : phase.label, "Working", phase.label);
-    if (els.speakTiming.checked) speak(voiceCue, { replace: true });
+
+    // Voice is intentionally numeric during work:
+    // rep number first, then the tempo seconds. Visual labels remain on screen.
+    if (els.speakTiming.checked) speak(voiceCue);
+
     beep(part.explosive ? 1120 : 760 + next * 80, 0.045);
     startTimedState("phase", part.seconds * 1000);
     lastSpokenSecond = part.seconds;
