@@ -546,13 +546,11 @@
     currentRep += 1;
     currentPhaseIndex = -1;
     updateWorkoutHeader();
-    const prefix = currentRep === 1 ? "Set " + currentSet + ". " : "";
-    speak(prefix + "Rep " + currentRep, { replace: true });
     beep(920, 0.06);
-    beginPhase(0);
+    beginPhase(0, currentRep === 1);
   }
 
-  function beginPhase(index) {
+  function beginPhase(index, announceSet = false) {
     const item = currentItem();
     const tempo = parseTempo(item.tempo) || parseTempo("3-1-1-1");
     let next = index;
@@ -566,11 +564,15 @@
     updateWorkoutHeader();
     const part = tempo[next];
     const phase = PHASES[next];
-    const voiceCue = part.explosive ? "Explode" : phase.voice;
+    const setPrefix = announceSet ? "Set " + currentSet + ". " : "";
+    const voiceCue = part.explosive
+      ? setPrefix + "Explode"
+      : setPrefix + phase.voice + ". " + part.seconds;
     setStatus(part.explosive ? "EXPLODE" : phase.label, "Working", phase.label);
-    if (els.speakTiming.checked) speak(voiceCue, { timingCue: true });
+    if (els.speakTiming.checked) speak(voiceCue, { replace: true });
     beep(part.explosive ? 1120 : 760 + next * 80, 0.045);
     startTimedState("phase", part.seconds * 1000);
+    lastSpokenSecond = part.seconds;
     els.timeDisplay.textContent = formatPhaseSeconds(part.seconds * 1000, part.explosive);
   }
 
@@ -661,10 +663,23 @@
 
   function maybeSpeakCountdown(remainingSeconds) {
     if (remainingSeconds <= 0 || remainingSeconds === lastSpokenSecond) return;
-    if (state === "countdown") speak(String(remainingSeconds), { timingCue: true });
+
+    if (state === "countdown") {
+      speak(String(remainingSeconds), { timingCue: true });
+    }
+
+    if (state === "phase" && els.speakTiming.checked) {
+      const tempo = parseTempo(currentItem().tempo);
+      const part = tempo && tempo[currentPhaseIndex];
+      if (part && !part.explosive) {
+        speak(String(remainingSeconds), { timingCue: true });
+      }
+    }
+
     if (state === "rest" && [10, 5, 3, 2, 1].includes(remainingSeconds)) {
       speak(remainingSeconds >= 5 ? remainingSeconds + " seconds remaining" : String(remainingSeconds), { timingCue: true });
     }
+
     lastSpokenSecond = remainingSeconds;
   }
 
