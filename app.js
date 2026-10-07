@@ -608,6 +608,7 @@
   function beginRep() {
     currentRep += 1;
     currentPhaseIndex = -1;
+    state = "lead-in";
     updateWorkoutHeader();
     beep(920, 0.06);
 
@@ -618,7 +619,10 @@
       : String(currentRep);
 
     setStatus("REP " + currentRep, "Get ready", "Rep " + currentRep);
-    speakRepLeadIn(leadIn, () => beginPhase(0));
+    speakRepLeadIn(leadIn, () => {
+      if (state !== "lead-in") return;
+      beginPhase(0);
+    });
   }
 
   function beginPhase(index) {
