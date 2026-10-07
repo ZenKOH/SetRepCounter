@@ -43,6 +43,14 @@
   let rafId = null;
   let audioContext = null;
   let wakeLock = null;
+  let phaseStartedAt = 0;
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandaloneIOS = isIOS && window.navigator.standalone === true;
+  const isSafariIOS =
+    isIOS &&
+    (/Version\/\d+(?:\.\d+)*.*Safari/i.test(navigator.userAgent) || isStandaloneIOS) &&
+    !/(CriOS|FxiOS|EdgiOS|OPiOS)/i.test(navigator.userAgent);
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -130,20 +138,59 @@
     );
   }
 
-  function speak(text, { force = false } = {}) {
+  function speak(text, { force = false, timingCue = false, replace = false } = {}) {
     const enabled = force || (config ? config.voiceEnabled : els.voiceEnabled.checked);
-    if (!enabled || !("speechSynthesis" in window)) return;
+    if (!enabled || !("speechSynthesis" in window)) return false;
+
+    if (timingCue && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
+      return false;
+    }
+
+    if (replace) window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
 
     const utterance = new SpeechSynthesisUtterance(text);
     const voice = getVoice();
     if (voice) utterance.voice = voice;
-    utterance.rate = 1.2;
+    utterance.rate = 0.95;
     utterance.pitch = 1;
     window.speechSynthesis.speak(utterance);
+    return true;
   }
 
   function stopSpeech() {
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  }
+
+  function configureIOSAudioSession() {
+    try {
+      if (navigator.audioSession && "type" in navigator.audioSession) {
+        navigator.audioSession.type = "playback";
+      }
+    } catch (_) {
+      // AudioSession is Safari/WebKit-specific and may not be writable everywhere.
+    }
+  }
+
+  function primeIOSAudio() {
+    configureIOSAudioSession();
+    ensureAudio();
+
+    if (audioContext && audioContext.state === "suspended") {
+      audioContext.resume().catch(() => {});
+    }
+
+    if (isIOS && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
+
+      // Mobile Safari requires the first utterance to originate in a user gesture
+      // before later timer-driven utterances are dependable.
+      const unlock = new SpeechSynthesisUtterance(" ");
+      unlock.volume = 0.01;
+      unlock.rate = 1;
+      window.speechSynthesis.speak(unlock);
+    }
   }
 
   function ensureAudio() {
@@ -199,7 +246,8 @@
   function beginCountdown() {
     state = "countdown";
     phaseDuration = 3000;
-    phaseEnd = performance.now() + phaseDuration;
+    phaseStartedAt = performance.now();
+    phaseEnd = phaseStartedAt + phaseDuration;
     lastSpokenSecond = 4;
     setStatus("GET READY", "Starting", "Get ready");
     updateFrame(performance.now());
@@ -210,13 +258,13 @@
     state = "rep";
     currentRep += 1;
     phaseDuration = config.repSeconds * 1000;
-    phaseEnd = performance.now() + phaseDuration;
+    phaseStartedAt = performance.now();
+    phaseEnd = phaseStartedAt + phaseDuration;
     lastSpokenSecond = config.repSeconds;
     setStatus("WORK", "Running", "Set " + currentSet + ", rep " + currentRep);
 
     const prefix = firstOfSet ? "Set " + currentSet + ". " : "";
-    const timing = config.speakTiming ? ". " + config.repSeconds + " seconds" : "";
-    speak(prefix + "Rep " + currentRep + timing);
+    speak(prefix + "Rep " + currentRep, { replace: true });
     beep(920, 0.07);
 
     updateFrame(performance.now());
@@ -233,10 +281,11 @@
 
     state = "rest";
     phaseDuration = config.restSeconds * 1000;
-    phaseEnd = performance.now() + phaseDuration;
+    phaseStartedAt = performance.now();
+    phaseEnd = phaseStartedAt + phaseDuration;
     lastSpokenSecond = config.restSeconds + 1;
     setStatus("REST", "Resting", "Set " + currentSet + " complete. Rest.");
-    speak("Set " + currentSet + " complete. Rest " + config.restSeconds + " seconds.");
+    speak("Set " + currentSet + " complete. Rest " + config.restSeconds + " seconds.", { replace: true });
     beep(520, 0.12);
 
     updateFrame(performance.now());
@@ -248,7 +297,7 @@
     cancelAnimationFrame(rafId);
     rafId = null;
     stopSpeech();
-    speak("Workout complete.");
+    speak("Workout complete.", { replace: true });
     setStatus("COMPLETE", "Done", "Workout complete");
     els.timeDisplay.textContent = "00:00";
     els.progressBar.style.width = "100%";
@@ -295,7 +344,7 @@
     if (!config.speakTiming || remainingSeconds <= 0 || remainingSeconds === lastSpokenSecond) return;
 
     if (state === "countdown") {
-      speak(String(remainingSeconds));
+      speak(String(remainingSeconds), { timingCue: true });
       lastSpokenSecond = remainingSeconds;
       return;
     }
@@ -315,7 +364,7 @@
         remainingSeconds === 1;
 
       if (shouldSpeak) {
-        speak(remainingSeconds >= 5 ? remainingSeconds + " seconds remaining" : String(remainingSeconds));
+        speak(remainingSeconds >= 5 ? remainingSeconds + " seconds remaining" : String(remainingSeconds), { timingCue: true });
       }
       lastSpokenSecond = remainingSeconds;
     }
@@ -324,9 +373,10 @@
   function updateFrame(now) {
     if (!["countdown", "rep", "rest"].includes(state)) return;
 
-    const remainingMs = Math.max(0, phaseEnd - now);
+    const elapsedMs = Math.max(0, now - phaseStartedAt);
+    const remainingMs = Math.max(0, phaseDuration - elapsedMs);
     const remainingSeconds = Math.ceil(remainingMs / 1000);
-    const progress = phaseDuration > 0 ? 1 - remainingMs / phaseDuration : 1;
+    const progress = phaseDuration > 0 ? elapsedMs / phaseDuration : 1;
 
     els.setDisplay.textContent = currentSet + " / " + config.sets;
     els.repDisplay.textContent = currentRep + " / " + config.reps;
@@ -335,7 +385,7 @@
 
     maybeSpeakTiming(remainingSeconds);
 
-    if (remainingMs <= 0) handlePhaseEnd();
+    if (elapsedMs >= phaseDuration) handlePhaseEnd();
   }
 
   function scheduleFrame() {
@@ -352,8 +402,8 @@
 
   function startWorkout() {
     stopSpeech();
-    ensureAudio();
     config = readConfig();
+    primeIOSAudio();
     currentSet = 1;
     currentRep = 0;
     pausedState = null;
@@ -371,8 +421,10 @@
 
   function pauseWorkout() {
     if (!["countdown", "rep", "rest"].includes(state)) return;
+    const now = performance.now();
+    const elapsedMs = Math.max(0, now - phaseStartedAt);
     pausedState = state;
-    pauseRemaining = Math.max(0, phaseEnd - performance.now());
+    pauseRemaining = Math.max(0, phaseDuration - elapsedMs);
     state = "paused";
     cancelAnimationFrame(rafId);
     rafId = null;
@@ -385,7 +437,9 @@
   function resumeWorkout() {
     if (state !== "paused" || !pausedState) return;
     state = pausedState;
-    phaseEnd = performance.now() + pauseRemaining;
+    const elapsedBeforePause = phaseDuration - pauseRemaining;
+    phaseStartedAt = performance.now() - elapsedBeforePause;
+    phaseEnd = phaseStartedAt + phaseDuration;
     pausedState = null;
     lastSpokenSecond = Math.ceil(pauseRemaining / 1000);
     els.pauseButton.textContent = "Pause";
@@ -405,6 +459,7 @@
     config = null;
     currentSet = 1;
     currentRep = 0;
+    phaseStartedAt = 0;
     phaseEnd = 0;
     phaseDuration = 0;
     pauseRemaining = 0;
@@ -446,7 +501,13 @@
   els.resetButton.addEventListener("click", resetWorkout);
   els.soundTest.addEventListener("click", () => {
     stopSpeech();
-    speak("Voice counter ready.", { force: true });
+    primeIOSAudio();
+
+    if (isIOS && !isSafariIOS) {
+      alert("For reliable spoken cues on iPhone, open this page directly in Safari. In-app browsers and some iOS browsers can expose Web Speech without actually playing it.");
+    }
+
+    speak("Voice counter ready.", { force: true, replace: true });
     if (els.beepEnabled.checked) {
       ensureAudio();
       const saved = config;
@@ -489,6 +550,11 @@
     els.soundTest.disabled = true;
   }
 
+  configureIOSAudioSession();
   loadSettings();
   resetWorkout();
+
+  if (isIOS) {
+    els.soundTest.textContent = isSafariIOS ? "Enable / test sound" : "Open in Safari for voice";
+  }
 })();
