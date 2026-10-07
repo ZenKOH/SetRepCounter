@@ -4,23 +4,26 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b1220" />
-  <meta name="description" content="A simple browser-based set and rep counter with spoken timing cues." />
-  <title>Set & Rep Voice Counter</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta name="description" content="Set, rep, tempo and circuit training counter with spoken phase cues." />
+  <title>Set & Rep Tempo Trainer</title>
+  <link rel="stylesheet" href="style.css?v=20261007-tempo1" />
 </head>
 <body>
   <main class="app-shell">
     <header class="app-header">
       <div>
-        <p class="eyebrow">SET &amp; REP</p>
-        <h1>Voice Counter</h1>
+        <p class="eyebrow">SET · REP · TEMPO</p>
+        <h1>Tempo Trainer</h1>
       </div>
-      <button id="soundTest" class="ghost-button" type="button" aria-label="Test voice">Test voice</button>
+      <button id="soundTest" class="ghost-button" type="button">Test voice</button>
     </header>
 
     <section class="counter-card" aria-labelledby="phaseLabel">
       <div class="phase-row">
-        <span id="phaseLabel" class="phase-label">READY</span>
+        <div>
+          <span id="exerciseProgress" class="exercise-progress">SINGLE EXERCISE</span>
+          <h2 id="exerciseNameDisplay" class="exercise-name">Exercise</h2>
+        </div>
         <span id="statusBadge" class="status-badge">Idle</span>
       </div>
 
@@ -35,13 +38,32 @@
         </div>
       </div>
 
+      <div class="tempo-panel">
+        <div class="tempo-heading">
+          <span class="metric-label">REP TEMPO</span>
+          <strong id="tempoDisplay">3-1-1-1</strong>
+        </div>
+        <div id="tempoPhases" class="tempo-phases" aria-label="Rep tempo phases">
+          <div class="tempo-phase" data-phase="0"><span>LOWER</span><strong id="tempo0">3</strong></div>
+          <div class="tempo-phase" data-phase="1"><span>BOTTOM</span><strong id="tempo1">1</strong></div>
+          <div class="tempo-phase" data-phase="2"><span>LIFT</span><strong id="tempo2">1</strong></div>
+          <div class="tempo-phase" data-phase="3"><span>TOP</span><strong id="tempo3">1</strong></div>
+        </div>
+      </div>
+
       <div class="timer-wrap">
-        <span class="metric-label">TIME</span>
-        <strong id="timeDisplay" class="timer-value">00:05</strong>
+        <span id="phaseLabel" class="phase-label">READY</span>
+        <strong id="timeDisplay" class="timer-value">00:03</strong>
+        <span class="timer-caption">CURRENT PHASE</span>
       </div>
 
       <div class="progress-track" aria-hidden="true">
         <div id="progressBar" class="progress-bar"></div>
+      </div>
+
+      <div class="time-summary">
+        <div><span>ELAPSED</span><strong id="elapsedDisplay">00:00</strong></div>
+        <div><span>PLANNED</span><strong id="plannedDisplay">04:00</strong></div>
       </div>
 
       <p id="liveStatus" class="sr-only" aria-live="polite">Ready</p>
@@ -56,102 +78,106 @@
     <section class="settings-card" aria-labelledby="settingsTitle">
       <div class="section-heading">
         <div>
-          <p class="eyebrow">WORKOUT</p>
-          <h2 id="settingsTitle">Settings</h2>
+          <p class="eyebrow">PROGRAMME</p>
+          <h2 id="settingsTitle">Workout builder</h2>
         </div>
         <span class="saved-note">Saved on this device</span>
       </div>
 
-      <div class="setting-list">
-        <div class="setting-row">
-          <div>
-            <label for="sets">Sets</label>
-            <span class="setting-help">Total rounds</span>
-          </div>
-          <div class="stepper">
-            <button type="button" data-stepper="sets" data-delta="-1" aria-label="Decrease sets">−</button>
-            <input id="sets" type="number" inputmode="numeric" min="1" max="99" value="3" aria-label="Sets" />
-            <button type="button" data-stepper="sets" data-delta="1" aria-label="Increase sets">+</button>
-          </div>
+      <div class="mode-switch" role="tablist" aria-label="Workout mode">
+        <button id="singleModeButton" class="mode-button active" type="button">Single exercise</button>
+        <button id="circuitModeButton" class="mode-button" type="button">Circuit training</button>
+      </div>
+
+      <div id="singleSettings">
+        <div class="field-block">
+          <label for="exerciseName">Exercise name</label>
+          <input id="exerciseName" class="text-input" type="text" maxlength="60" value="Exercise" />
         </div>
 
-        <div class="setting-row">
-          <div>
-            <label for="reps">Reps per set</label>
-            <span class="setting-help">Repetitions in each set</span>
+        <div class="setting-list">
+          <div class="setting-row">
+            <div><label for="sets">Sets</label><span class="setting-help">Total sets</span></div>
+            <div class="stepper">
+              <button type="button" data-stepper="sets" data-delta="-1">−</button>
+              <input id="sets" type="number" inputmode="numeric" min="1" max="99" value="3" />
+              <button type="button" data-stepper="sets" data-delta="1">+</button>
+            </div>
           </div>
-          <div class="stepper">
-            <button type="button" data-stepper="reps" data-delta="-1" aria-label="Decrease reps">−</button>
-            <input id="reps" type="number" inputmode="numeric" min="1" max="999" value="10" aria-label="Reps per set" />
-            <button type="button" data-stepper="reps" data-delta="1" aria-label="Increase reps">+</button>
-          </div>
-        </div>
 
-        <div class="setting-row">
-          <div>
-            <label for="repSeconds">Seconds per rep</label>
-            <span class="setting-help">Pace for each repetition</span>
+          <div class="setting-row">
+            <div><label for="reps">Reps per set</label><span class="setting-help">Repetitions in each set</span></div>
+            <div class="stepper">
+              <button type="button" data-stepper="reps" data-delta="-1">−</button>
+              <input id="reps" type="number" inputmode="numeric" min="1" max="999" value="10" />
+              <button type="button" data-stepper="reps" data-delta="1">+</button>
+            </div>
           </div>
-          <div class="stepper">
-            <button type="button" data-stepper="repSeconds" data-delta="-1" aria-label="Decrease seconds per rep">−</button>
-            <input id="repSeconds" type="number" inputmode="numeric" min="1" max="60" value="5" aria-label="Seconds per rep" />
-            <button type="button" data-stepper="repSeconds" data-delta="1" aria-label="Increase seconds per rep">+</button>
-          </div>
-        </div>
 
-        <div class="setting-row">
-          <div>
-            <label for="restSeconds">Rest between sets</label>
-            <span class="setting-help">Seconds between rounds</span>
+          <div class="setting-row tempo-setting">
+            <div>
+              <label for="tempo">Rep tempo</label>
+              <span class="setting-help">Lower · bottom hold · lift · top hold</span>
+            </div>
+            <input id="tempo" class="tempo-input" type="text" inputmode="text" value="3-1-1-1" aria-label="Rep tempo" />
           </div>
-          <div class="stepper">
-            <button type="button" data-stepper="restSeconds" data-delta="-5" aria-label="Decrease rest time">−</button>
-            <input id="restSeconds" type="number" inputmode="numeric" min="0" max="600" step="5" value="30" aria-label="Rest between sets in seconds" />
-            <button type="button" data-stepper="restSeconds" data-delta="5" aria-label="Increase rest time">+</button>
+
+          <div class="setting-row">
+            <div><label for="restSeconds">Rest between sets</label><span class="setting-help">Seconds</span></div>
+            <div class="stepper">
+              <button type="button" data-stepper="restSeconds" data-delta="-5">−</button>
+              <input id="restSeconds" type="number" inputmode="numeric" min="0" max="600" step="5" value="30" />
+              <button type="button" data-stepper="restSeconds" data-delta="5">+</button>
+            </div>
           </div>
         </div>
       </div>
 
+      <div id="circuitSettings" hidden>
+        <p class="circuit-intro">Each block can use different sets, reps, tempo and rest. Duplicate an exercise if you want later sets of the same exercise to use a different prescription.</p>
+        <div id="circuitList" class="circuit-list"></div>
+        <button id="addExerciseButton" class="add-button" type="button">+ Add exercise</button>
+      </div>
+
+      <div class="tempo-guide">
+        <strong>Tempo format</strong>
+        <span><b>3</b>-1-1-1 = 3 sec eccentric/lowering</span>
+        <span>3-<b>1</b>-1-1 = 1 sec bottom hold</span>
+        <span>3-1-<b>1</b>-1 = 1 sec concentric/lifting</span>
+        <span>3-1-1-<b>1</b> = 1 sec top hold</span>
+        <small>Use 0 to skip a phase. Use X for an explosive/as-fast-as-possible cue; the app uses a 1-second cue window for deterministic timing.</small>
+      </div>
+
+      <div class="estimate-row">
+        <span>Estimated programme time</span>
+        <strong id="estimateDisplay">04:00</strong>
+      </div>
+
       <div class="toggle-grid">
         <label class="toggle-row">
-          <span>
-            <strong>Voice</strong>
-            <small>Speak sets and reps</small>
-          </span>
+          <span><strong>Voice</strong><small>Speak sets, reps and exercise changes</small></span>
           <input id="voiceEnabled" type="checkbox" checked />
         </label>
-
         <label class="toggle-row">
-          <span>
-            <strong>Speak timing</strong>
-            <small>Count down rep timing and rest cues</small>
-          </span>
+          <span><strong>Phase cues</strong><small>Speak Lower, Hold, Lift and Explode</small></span>
           <input id="speakTiming" type="checkbox" checked />
         </label>
-
         <label class="toggle-row">
-          <span>
-            <strong>3-second countdown</strong>
-            <small>Prepare before the first rep</small>
-          </span>
+          <span><strong>3-second countdown</strong><small>Prepare before the programme begins</small></span>
           <input id="startCountdown" type="checkbox" checked />
         </label>
-
         <label class="toggle-row">
-          <span>
-            <strong>Beep</strong>
-            <small>Sound at phase changes</small>
-          </span>
+          <span><strong>Beep</strong><small>Sound at rep and phase changes</small></span>
           <input id="beepEnabled" type="checkbox" />
         </label>
       </div>
     </section>
 
     <footer>
-      <p>No sign-in, server or patient data. Settings stay in your browser.</p>
+      <p>No sign-in, backend or patient data. Workout settings remain in this browser.</p>
     </footer>
   </main>
 
-  <script src="app.js?v=20261007-iosfix2"></script>
+  <script src="app.js?v=20261007-tempo1"></script>
 </body>
 </html>

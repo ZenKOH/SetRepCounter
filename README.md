@@ -1,68 +1,62 @@
-# Set & Rep Voice Counter
+# Set & Rep Tempo Trainer
 
-A lightweight browser-based exercise counter that announces sets, repetitions and timing cues aloud.
+A dependency-free browser workout counter for sets, reps, four-phase rep tempo and circuit training.
 
 ## Live app
 
-Once GitHub Pages deployment is enabled, the app is available at:
+https://zenkoh.github.io/SetRepCounter/
 
-**https://zenkoh.github.io/SetRepCounter/**
+## Main features
 
-## Features
+- Single-exercise mode
+- Circuit mode with multiple exercise blocks
+- Each circuit block can define its own sets, reps, tempo and rest
+- Four-phase rep tempo: eccentric/lowering → bottom hold → concentric/lifting → top hold
+- Tempo examples: `3-1-1-1`, `4-0-2-0`, and `X-1-1-0`
+- `0` skips a phase
+- `X` means explosive/as-fast-as-possible; the deterministic timer gives it a 1-second cue window
+- Visual active-phase highlighting
+- Spoken exercise, set, rep and phase cues where browser speech is available
+- Optional beeps
+- Live overall elapsed workout time
+- Estimated programme duration before starting
+- Pause/resume excludes paused time from elapsed workout time
+- Local browser persistence only
+- Responsive layout for desktop, tablet and mobile
+- Screen Wake Lock support where available
 
-- Configurable sets and reps
-- Configurable seconds per rep
-- Configurable rest between sets
-- Optional 3-2-1 start countdown
-- Spoken set and rep announcements using the browser Web Speech API
-- Optional spoken rep countdown and rest warnings
-- Optional audio beep at phase changes
-- Start, pause/resume and reset
-- Large, responsive display for desktop, tablet and phone
-- Settings saved locally in the browser
-- Screen Wake Lock support when available
-- Keyboard shortcuts: **Space** to pause/resume and **R** to reset
-- No backend, login, database, API key or external dependency
+## Circuit training
+
+Each circuit row contains:
+
+- exercise name
+- sets
+- reps per set
+- rep tempo
+- rest time
+
+Rows can be moved, duplicated or removed. Duplicating the same exercise is a simple way to prescribe different reps or tempo for later sets.
+
+## Tempo definition
+
+The four positions always use this order:
+
+1. Eccentric / lowering
+2. Bottom hold / isometric
+3. Concentric / lifting
+4. Top hold / isometric
+
+For example, `3-1-1-1` means 3 seconds lowering, 1 second at the bottom, 1 second lifting, and 1 second at the top.
 
 ## Privacy
 
-The app does not send workout data anywhere. Settings are stored only in the browser with `localStorage`.
+No sign-in, backend or database is used. Workout settings stay in local browser storage.
 
-No patient-identifiable information should be entered because this version has no patient-record functionality.
-
-## Browser support
-
-The counter and timer work in modern browsers. Spoken voice depends on the browser/device implementation of the Web Speech API. Available voices and audio behaviour can therefore vary between Safari, Chrome, Edge, iOS and Android.
-
-For best mobile reliability:
-
-1. Open the page directly in Safari or Chrome.
-2. Press **Start** yourself to allow speech/audio playback.
-3. Keep device media volume audible.
-4. Use **Test voice** before starting if needed.
-
-## Development
-
-This is deliberately dependency-free:
+## Files
 
 - `index.html`
 - `style.css`
 - `app.js`
+- `.github/workflows/pages.yml`
 
-Run locally by opening `index.html`, or use any static web server.
-
-Example:
-
-```bash
-python3 -m http.server 8080
-```
-
-Then open `http://localhost:8080`.
-
-## Deployment
-
-A GitHub Actions workflow in `.github/workflows/pages.yml` deploys the repository root to GitHub Pages on each push to `main`.
-
-## Roadmap ideas
-
-Future versions could add exercise names, configurable up/hold/down phases, per-set rep targets, saved programmes, session history, clinician workflows and camera/sensor-based automatic rep detection.
+GitHub Pages deploys automatically from `main`.
