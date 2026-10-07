@@ -88,9 +88,7 @@
   let speechUnlocked = !isIOS;
   let speechTestTimer = null;
   let lastSpokenSecond = null;
-  let numericSpeechQueue = [];
-  let numericSpeechBusy = false;
-  let numericSpeechGapTimer = null;
+  let repLeadInTimer = null;
   let workoutStartedAt = 0;
   let pauseStartedAt = 0;
   let totalPausedMs = 0;
@@ -442,54 +440,70 @@
     return true;
   }
 
-  function clearNumericSpeechQueue() {
-    numericSpeechQueue = [];
-    numericSpeechBusy = false;
-    if (numericSpeechGapTimer) {
-      clearTimeout(numericSpeechGapTimer);
-      numericSpeechGapTimer = null;
-    }
-  }
+  function speakNumericCue(value) {
+    if (!els.voiceEnabled.checked || !els.speakTiming.checked || !("speechSynthesis" in window)) return false;
+    if (isIOS && !speechUnlocked) return false;
 
-  function queueNumericCue(value, gapAfterMs = 220) {
-    if (!els.voiceEnabled.checked || !els.speakTiming.checked || !("speechSynthesis" in window)) return;
-    if (isIOS && !speechUnlocked) return;
-    numericSpeechQueue.push({ text: String(value), gapAfterMs: gapAfterMs });
-    drainNumericSpeechQueue();
-  }
-
-  function drainNumericSpeechQueue() {
-    if (numericSpeechBusy || numericSpeechQueue.length === 0 || !("speechSynthesis" in window)) return;
-
-    // Let non-numeric announcements such as "Set 2" finish before the numeric cadence begins.
-    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-      numericSpeechGapTimer = setTimeout(drainNumericSpeechQueue, 90);
-      return;
-    }
-
-    const next = numericSpeechQueue.shift();
-    numericSpeechBusy = true;
-
-    const utterance = new SpeechSynthesisUtterance(next.text);
+    const utterance = new SpeechSynthesisUtterance(String(value));
     const voice = getVoice();
     if (voice && !isIOS) utterance.voice = voice;
     utterance.lang = "en-US";
     utterance.volume = 1;
-    utterance.rate = 1.15;
+    utterance.rate = 1.12;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+    return true;
+  }
+
+  function speakRepLeadIn(text, onReady) {
+    if (repLeadInTimer) {
+      clearTimeout(repLeadInTimer);
+      repLeadInTimer = null;
+    }
+
+    const continueAfterGap = () => {
+      repLeadInTimer = setTimeout(() => {
+        repLeadInTimer = null;
+        onReady();
+      }, 420);
+    };
+
+    if (!els.voiceEnabled.checked || !("speechSynthesis" in window) || (isIOS && !speechUnlocked)) {
+      continueAfterGap();
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voice = getVoice();
+    if (voice && !isIOS) utterance.voice = voice;
+    utterance.lang = "en-US";
+    utterance.volume = 1;
+    utterance.rate = 1.0;
     utterance.pitch = 1;
 
+    let finished = false;
     const finish = () => {
-      numericSpeechBusy = false;
-      numericSpeechGapTimer = setTimeout(drainNumericSpeechQueue, next.gapAfterMs);
+      if (finished) return;
+      finished = true;
+      continueAfterGap();
     };
 
     utterance.onend = finish;
     utterance.onerror = finish;
     window.speechSynthesis.speak(utterance);
+
+    // Fail-safe so the workout cannot get stuck if a browser never fires onend.
+    repLeadInTimer = setTimeout(() => {
+      repLeadInTimer = null;
+      finish();
+    }, 2200);
   }
 
   function stopSpeech() {
-    clearNumericSpeechQueue();
+    if (repLeadInTimer) {
+      clearTimeout(repLeadInTimer);
+      repLeadInTimer = null;
+    }
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
   }
 
@@ -595,15 +609,16 @@
     currentRep += 1;
     currentPhaseIndex = -1;
     updateWorkoutHeader();
-
-    // Announce the set first, then keep the rep itself numeric-only.
-    if (currentRep === 1) speak("Set " + currentSet);
-
-    // Give the rep number extra breathing room before the first tempo second.
-    queueNumericCue(currentRep, 320);
-
     beep(920, 0.06);
-    beginPhase(0);
+
+    // The rep number is spoken before the tempo clock starts.
+    // On the first rep of a set, say "Set N. N"; otherwise say only the rep number.
+    const leadIn = currentRep === 1
+      ? "Set " + currentSet + ". " + currentRep
+      : String(currentRep);
+
+    setStatus("REP " + currentRep, "Get ready", "Rep " + currentRep);
+    speakRepLeadIn(leadIn, () => beginPhase(0));
   }
 
   function beginPhase(index) {
@@ -623,9 +638,9 @@
 
     setStatus(part.explosive ? "EXPLODE" : phase.label, "Working", phase.label);
 
-    // First number for the phase is queued immediately; subsequent seconds are queued
-    // by maybeSpeakCountdown(). Nothing is dropped if the speech engine is still busy.
-    queueNumericCue(part.explosive ? "X" : part.seconds, 180);
+    // The first tempo number is spoken exactly when this phase begins.
+    // Subsequent numbers are spoken once per real second by maybeSpeakCountdown().
+    speakNumericCue(part.explosive ? "X" : part.seconds);
 
     beep(part.explosive ? 1120 : 760 + next * 80, 0.045);
     startTimedState("phase", part.seconds * 1000);
@@ -722,19 +737,19 @@
     if (remainingSeconds <= 0 || remainingSeconds === lastSpokenSecond) return;
 
     if (state === "countdown") {
-      queueNumericCue(remainingSeconds, 180);
+      speakNumericCue(remainingSeconds);
     }
 
     if (state === "phase" && els.speakTiming.checked) {
       const tempo = parseTempo(currentItem().tempo);
       const part = tempo && tempo[currentPhaseIndex];
       if (part && !part.explosive) {
-        queueNumericCue(remainingSeconds, 180);
+        // Exactly one spoken number per elapsed second.
+        speakNumericCue(remainingSeconds);
       }
     }
 
     if (state === "rest" && [10, 5, 3, 2, 1].includes(remainingSeconds)) {
-      // Keep rest cues readable, but do not allow them to erase queued numeric tempo cues.
       const cue = remainingSeconds >= 5 ? remainingSeconds + " seconds remaining" : String(remainingSeconds);
       speak(cue);
     }
