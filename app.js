@@ -530,48 +530,54 @@
     return true;
   }
 
-  function speakRepLeadIn(text, onReady) {
-    if (repLeadInTimer) {
-      clearTimeout(repLeadInTimer);
-      repLeadInTimer = null;
-    }
+  function speakRepLeadIn(setText, repText, onReady) {
+    if (repLeadInTimer) clearTimeout(repLeadInTimer);
 
-    const continueAfterGap = () => {
+    const afterRep = () => {
       repLeadInTimer = setTimeout(() => {
         repLeadInTimer = null;
         onReady();
       }, 420);
     };
 
-    if (!els.voiceEnabled.checked || !("speechSynthesis" in window) || (isIOS && !speechUnlocked)) {
-      continueAfterGap();
+    const available = els.voiceEnabled.checked && ("speechSynthesis" in window) && (!isIOS || speechUnlocked);
+    if (!available) {
+      afterRep();
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voice = getVoice();
-    if (voice && !isIOS) utterance.voice = voice;
-    utterance.lang = "en-US";
-    utterance.volume = 1;
-    utterance.rate = 1.0;
-    utterance.pitch = 1;
-
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      continueAfterGap();
+    const utter = (text) => {
+      const u = new SpeechSynthesisUtterance(text);
+      const voice = getVoice();
+      if (voice && !isIOS) u.voice = voice;
+      u.lang = "en-US";
+      u.volume = 1;
+      u.rate = 1.0;
+      u.pitch = 1;
+      return u;
     };
 
-    utterance.onend = finish;
-    utterance.onerror = finish;
-    window.speechSynthesis.speak(utterance);
+    const sayRep = () => {
+      const u = utter(repText);
+      u.onend = afterRep;
+      u.onerror = afterRep;
+      window.speechSynthesis.speak(u);
+    };
 
-    // Fail-safe so the workout cannot get stuck if a browser never fires onend.
-    repLeadInTimer = setTimeout(() => {
-      repLeadInTimer = null;
-      finish();
-    }, 2200);
+    if (!setText) {
+      sayRep();
+      return;
+    }
+
+    const u = utter(setText);
+    u.onend = () => {
+      repLeadInTimer = setTimeout(() => {
+        repLeadInTimer = null;
+        sayRep();
+      }, 380);
+    };
+    u.onerror = u.onend;
+    window.speechSynthesis.speak(u);
   }
 
   function stopSpeech() {
