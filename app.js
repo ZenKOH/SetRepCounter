@@ -709,14 +709,12 @@
     updateNextSetAvailability();
     beep(920, 0.06);
 
-    // The rep is announced before the tempo clock starts.
-    // On the first rep of a set, say "Set N. Rep N"; otherwise say "Rep N".
-    const leadIn = currentRep === 1
-      ? "Set " + currentSet + ". Rep " + currentRep
-      : "Rep " + currentRep;
+    // Speak Set and Rep as separate cues with a brief pause between them.
+    const setCue = currentRep === 1 ? "Set " + currentSet : "";
+    const repCue = "Rep " + currentRep;
 
     setStatus("REP " + currentRep, "Get ready", "Rep " + currentRep);
-    speakRepLeadIn(leadIn, () => {
+    speakRepLeadIn(setCue, repCue, () => {
       if (state !== "lead-in") return;
       beginPhase(0);
     });
