@@ -12,7 +12,8 @@
   const LIMITS = {
     sets: { min: 1, max: 99, fallback: 3 },
     reps: { min: 1, max: 999, fallback: 10 },
-    restSeconds: { min: 0, max: 600, fallback: 30 }
+    restSeconds: { min: 0, max: 600, fallback: 30 },
+    countdownSeconds: { min: 1, max: 60, fallback: 3 }
   };
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -42,6 +43,7 @@
     liveStatus: document.getElementById("liveStatus"),
     startButton: document.getElementById("startButton"),
     pauseButton: document.getElementById("pauseButton"),
+    nextSetButton: document.getElementById("nextSetButton"),
     resetButton: document.getElementById("resetButton"),
     singleModeButton: document.getElementById("singleModeButton"),
     circuitModeButton: document.getElementById("circuitModeButton"),
@@ -62,6 +64,7 @@
     voiceEnabled: document.getElementById("voiceEnabled"),
     speakTiming: document.getElementById("speakTiming"),
     startCountdown: document.getElementById("startCountdown"),
+    countdownSeconds: document.getElementById("countdownSeconds"),
     beepEnabled: document.getElementById("beepEnabled")
   };
 
@@ -154,7 +157,10 @@
     els.tempo.value = candidate;
     els.tempo.classList.remove("invalid");
     if (saveNow) saveSettings();
-    else updateEstimate();
+    else {
+      updateEstimate();
+      applyLiveProgramSettings();
+    }
   }
 
   function tempoSeconds(value) {
@@ -204,7 +210,7 @@
   }
 
   function estimateProgramMs(items) {
-    let seconds = els.startCountdown.checked ? 3 : 0;
+    let seconds = els.startCountdown.checked ? safeInt(els.countdownSeconds.value, LIMITS.countdownSeconds) : 0;
     items.forEach((item, index) => {
       seconds += item.sets * item.reps * tempoSeconds(item.tempo);
       const restsInsideExercise = Math.max(0, item.sets - 1);
@@ -222,6 +228,65 @@
     if (state === "idle") updateIdlePreview();
   }
 
+  function isWorkoutActive() {
+    return program.length > 0 && !["idle", "complete"].includes(state);
+  }
+
+  function retimeCurrentState(durationMs) {
+    const nextDuration = Math.max(0, durationMs);
+    if (state === "paused") {
+      const elapsedBeforePause = Math.max(0, phaseDuration - pauseRemaining);
+      phaseDuration = nextDuration;
+      pauseRemaining = Math.max(0, nextDuration - elapsedBeforePause);
+      return;
+    }
+    phaseDuration = nextDuration;
+  }
+
+  function applyLiveProgramSettings() {
+    if (!isWorkoutActive()) return;
+
+    const nextProgram = buildProgram();
+    if (!nextProgram.length) return;
+
+    if (mode === "single") {
+      program[0] = nextProgram[0];
+    } else {
+      const count = Math.min(program.length, nextProgram.length);
+      for (let i = 0; i < count; i += 1) program[i] = nextProgram[i];
+    }
+
+    currentItemIndex = clamp(currentItemIndex, 0, Math.max(0, program.length - 1));
+    const item = currentItem();
+    if (!item) return;
+
+    const timedState = state === "paused" ? pausedState : state;
+    if (timedState === "countdown") {
+      if (!els.startCountdown.checked && state !== "paused") {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+        beginRep();
+        return;
+      }
+      retimeCurrentState(safeInt(els.countdownSeconds.value, LIMITS.countdownSeconds) * 1000);
+    } else if (timedState === "phase" && currentPhaseIndex >= 0) {
+      const tempo = parseTempo(item.tempo) || parseTempo("3-1-1-1");
+      const part = tempo[currentPhaseIndex];
+      if (part) retimeCurrentState(part.seconds * 1000);
+    } else if (timedState === "rest") {
+      retimeCurrentState(item.rest * 1000);
+    }
+
+    updateWorkoutHeader();
+    updateTempoUI(item.tempo, currentPhaseIndex);
+    els.plannedDisplay.textContent = formatClock(estimateProgramMs(program));
+
+    if (["countdown", "phase", "rest"].includes(state)) {
+      updateFrame(performance.now());
+      scheduleFrame();
+    }
+  }
+
   function saveSettings() {
     const payload = {
       mode: mode,
@@ -230,10 +295,12 @@
       voiceEnabled: els.voiceEnabled.checked,
       speakTiming: els.speakTiming.checked,
       startCountdown: els.startCountdown.checked,
+      countdownSeconds: safeInt(els.countdownSeconds.value, LIMITS.countdownSeconds),
       beepEnabled: els.beepEnabled.checked
     };
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch (_) {}
     updateEstimate();
+    applyLiveProgramSettings();
   }
 
   function loadSettings() {
@@ -252,6 +319,9 @@
       ["voiceEnabled", "speakTiming", "startCountdown", "beepEnabled"].forEach((key) => {
         if (typeof stored[key] === "boolean") els[key].checked = stored[key];
       });
+      if (stored.countdownSeconds !== undefined) {
+        els.countdownSeconds.value = safeInt(stored.countdownSeconds, LIMITS.countdownSeconds);
+      }
     } else {
       try {
         const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) || "null");
@@ -270,7 +340,9 @@
   }
 
   function setMode(nextMode, persist = true) {
-    mode = nextMode === "circuit" ? "circuit" : "single";
+    const requestedMode = nextMode === "circuit" ? "circuit" : "single";
+    if (isWorkoutActive() && requestedMode !== mode) return;
+    mode = requestedMode;
     els.singleModeButton.classList.toggle("active", mode === "single");
     els.circuitModeButton.classList.toggle("active", mode === "circuit");
     els.singleSettings.hidden = mode !== "single";
@@ -364,7 +436,10 @@
     const code = card.querySelector("[data-tempo-code]");
     if (code) code.textContent = candidate;
     if (saveNow) saveSettings();
-    else updateEstimate();
+    else {
+      updateEstimate();
+      applyLiveProgramSettings();
+    }
   }
 
   function updateTempoUI(tempo, activeIndex = -1) {
@@ -584,10 +659,24 @@
     }
   }
 
+  function updateNextSetAvailability() {
+    const logicalState = state === "paused" ? pausedState : state;
+    const running = document.body.classList.contains("running");
+    els.nextSetButton.disabled = !running || !program.length ||
+      ["idle", "complete", "countdown"].includes(logicalState);
+  }
+
   function setRunningUI(running) {
     document.body.classList.toggle("running", running);
     els.startButton.disabled = running;
     els.pauseButton.disabled = !running;
+    els.singleModeButton.disabled = running;
+    els.circuitModeButton.disabled = running;
+    els.addExerciseButton.disabled = running;
+    els.circuitList.querySelectorAll(".circuit-actions button").forEach((button) => {
+      button.disabled = running;
+    });
+    updateNextSetAvailability();
   }
 
   function startTimedState(nextState, durationMs) {
@@ -602,7 +691,8 @@
     currentPhaseIndex = -1;
     updateWorkoutHeader();
     setStatus("GET READY", "Starting", "Get ready");
-    startTimedState("countdown", 3000);
+    startTimedState("countdown", safeInt(els.countdownSeconds.value, LIMITS.countdownSeconds) * 1000);
+    updateNextSetAvailability();
   }
 
   function beginRep() {
@@ -610,6 +700,7 @@
     currentPhaseIndex = -1;
     state = "lead-in";
     updateWorkoutHeader();
+    updateNextSetAvailability();
     beep(920, 0.06);
 
     // The rep is announced before the tempo clock starts.
@@ -681,6 +772,7 @@
     currentPhaseIndex = -1;
     updateWorkoutHeader();
     setStatus("REST", "Resting", "Rest");
+    updateNextSetAvailability();
     speak("Rest " + seconds + " seconds.", { replace: true });
     beep(520, 0.1);
     startTimedState("rest", seconds * 1000);
@@ -705,6 +797,50 @@
     }
   }
 
+  function jumpToNextSet() {
+    const logicalState = state === "paused" ? pausedState : state;
+    if (!program.length || ["idle", "complete", "countdown"].includes(logicalState)) return;
+
+    const now = performance.now();
+    if (state === "paused" && pauseStartedAt) {
+      totalPausedMs += Math.max(0, now - pauseStartedAt);
+    }
+
+    cancelAnimationFrame(rafId);
+    rafId = null;
+    stopSpeech();
+    pendingAdvance = null;
+    pausedState = null;
+    pauseRemaining = 0;
+    pauseStartedAt = 0;
+    currentPhaseIndex = -1;
+
+    const item = currentItem();
+    if (!item) return;
+
+    if (currentSet < item.sets) {
+      currentSet += 1;
+      currentRep = 0;
+      updateWorkoutHeader();
+      beginRep();
+      requestWakeLock();
+      return;
+    }
+
+    if (currentItemIndex < program.length - 1) {
+      currentItemIndex += 1;
+      currentSet = 1;
+      currentRep = 0;
+      updateWorkoutHeader();
+      speak("Next exercise. " + currentItem().name, { replace: true });
+      beginRep();
+      requestWakeLock();
+      return;
+    }
+
+    completeWorkout();
+  }
+
   function getElapsedMs(now) {
     if (!workoutStartedAt) return 0;
     if (state === "complete") return finalElapsedMs;
@@ -727,7 +863,7 @@
     els.pauseButton.disabled = true;
     els.startButton.disabled = false;
     els.startButton.textContent = "Start again";
-    document.body.classList.remove("running");
+    setRunningUI(false);
     speak("Workout complete.");
     if (els.beepEnabled.checked) {
       beep(740, 0.08);
@@ -851,6 +987,7 @@
     stopSpeech();
     els.pauseButton.textContent = "Resume";
     setStatus("PAUSED", "Paused", "Workout paused");
+    updateNextSetAvailability();
     els.elapsedDisplay.textContent = formatClock(getElapsedMs(now));
     releaseWakeLock();
   }
@@ -867,6 +1004,7 @@
     els.pauseButton.textContent = "Pause";
     setStatus(state === "rest" ? "REST" : state === "countdown" ? "GET READY" : PHASES[currentPhaseIndex].label, "Running", "Workout resumed");
     speak("Resume");
+    updateNextSetAvailability();
     requestWakeLock();
     scheduleFrame();
   }
@@ -901,7 +1039,6 @@
 
   document.querySelectorAll("[data-stepper]").forEach((button) => {
     button.addEventListener("click", () => {
-      if (state !== "idle" && state !== "complete") return;
       const key = button.dataset.stepper;
       const rule = LIMITS[key];
       const input = els[key];
@@ -913,7 +1050,6 @@
 
   document.querySelectorAll("[data-tempo-step]").forEach((button) => {
     button.addEventListener("click", () => {
-      if (state !== "idle" && state !== "complete") return;
       const index = Number(button.dataset.tempoStep);
       const input = phaseInputs()[index];
       const delta = Number(button.dataset.delta);
@@ -923,12 +1059,17 @@
     });
   });
 
-  [els.exerciseName, els.sets, els.reps, els.restSeconds].forEach((input) => {
+  [els.exerciseName, els.sets, els.reps, els.restSeconds, els.countdownSeconds].forEach((input) => {
+    input.addEventListener("input", () => {
+      updateEstimate();
+      applyLiveProgramSettings();
+    });
     input.addEventListener("change", saveSettings);
     input.addEventListener("blur", saveSettings);
   });
 
   phaseInputs().forEach((input) => {
+    input.addEventListener("input", () => syncSingleTempoFromPhaseInputs(false));
     input.addEventListener("change", () => syncSingleTempoFromPhaseInputs(true));
     input.addEventListener("blur", () => syncSingleTempoFromPhaseInputs(true));
   });
@@ -939,6 +1080,7 @@
     if (valid) {
       syncSinglePhaseInputsFromTempo();
       updateEstimate();
+      applyLiveProgramSettings();
     }
   });
   els.tempo.addEventListener("blur", () => {
@@ -955,6 +1097,7 @@
   els.circuitModeButton.addEventListener("click", () => setMode("circuit"));
 
   els.addExerciseButton.addEventListener("click", () => {
+    if (isWorkoutActive()) return;
     circuit.push({ name: "Exercise " + (circuit.length + 1), sets: 3, reps: 10, tempo: "3-1-1-1", rest: 30 });
     renderCircuit();
     saveSettings();
@@ -974,6 +1117,7 @@
     if (!field) return;
     circuit[index][field] = event.target.value;
     updateEstimate();
+    applyLiveProgramSettings();
   });
 
   els.circuitList.addEventListener("change", (event) => {
@@ -1013,6 +1157,7 @@
 
     const button = event.target.closest("[data-action]");
     if (!button) return;
+    if (isWorkoutActive()) return;
     const action = button.dataset.action;
     if (action === "remove" && circuit.length > 1) circuit.splice(index, 1);
     if (action === "duplicate") circuit.splice(index + 1, 0, { ...circuit[index] });
@@ -1024,6 +1169,7 @@
 
   els.startButton.addEventListener("click", startWorkout);
   els.pauseButton.addEventListener("click", () => state === "paused" ? resumeWorkout() : pauseWorkout());
+  els.nextSetButton.addEventListener("click", jumpToNextSet);
   els.resetButton.addEventListener("click", resetWorkout);
 
   els.soundTest.addEventListener("click", () => {
@@ -1046,6 +1192,7 @@
       event.preventDefault();
       state === "paused" ? resumeWorkout() : pauseWorkout();
     }
+    if (event.key.toLowerCase() === "n" && !els.nextSetButton.disabled) jumpToNextSet();
     if (event.key.toLowerCase() === "r") resetWorkout();
   });
 

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1220" />
   <meta name="description" content="Set, rep, tempo and circuit training counter with spoken phase cues." />
   <title>Set & Rep Tempo Trainer</title>
-  <link rel="stylesheet" href="style.css?v=20261007-adjust1" />
+  <link rel="stylesheet" href="style.css?v=20261009-livecontrols1" />
 </head>
 <body>
   <main class="app-shell">
@@ -71,6 +71,7 @@
       <div class="primary-actions">
         <button id="startButton" class="primary-button" type="button">Start</button>
         <button id="pauseButton" class="secondary-button" type="button" disabled>Pause</button>
+        <button id="nextSetButton" class="secondary-button" type="button" disabled>Next set</button>
         <button id="resetButton" class="secondary-button" type="button">Reset</button>
       </div>
     </section>
@@ -81,7 +82,7 @@
           <p class="eyebrow">PROGRAMME</p>
           <h2 id="settingsTitle">Workout builder</h2>
         </div>
-        <span class="saved-note">Saved on this device</span>
+        <span class="saved-note">Saved locally · live edits apply during a workout</span>
       </div>
 
       <div class="mode-switch" role="tablist" aria-label="Workout mode">
@@ -190,6 +191,18 @@
         <strong id="estimateDisplay">04:00</strong>
       </div>
 
+      <div class="countdown-setting">
+        <div>
+          <label for="countdownSeconds">Starting countdown</label>
+          <span class="setting-help">Seconds before the first set begins</span>
+        </div>
+        <div class="stepper">
+          <button type="button" data-stepper="countdownSeconds" data-delta="-1" aria-label="Decrease starting countdown">−</button>
+          <input id="countdownSeconds" type="number" inputmode="numeric" min="1" max="60" value="3" />
+          <button type="button" data-stepper="countdownSeconds" data-delta="1" aria-label="Increase starting countdown">+</button>
+        </div>
+      </div>
+
       <div class="toggle-grid">
         <label class="toggle-row">
           <span><strong>Voice</strong><small>Speak sets, reps and exercise changes</small></span>
@@ -200,7 +213,7 @@
           <input id="speakTiming" type="checkbox" checked />
         </label>
         <label class="toggle-row">
-          <span><strong>3-second countdown</strong><small>Prepare before the programme begins</small></span>
+          <span><strong>Starting countdown</strong><small>Enable the configurable countdown before the programme begins</small></span>
           <input id="startCountdown" type="checkbox" checked />
         </label>
         <label class="toggle-row">
@@ -215,6 +228,6 @@
     </footer>
   </main>
 
-  <script src="app.js?v=20261007-repword1"></script>
+  <script src="app.js?v=20261009-livecontrols1"></script>
 </body>
 </html>
