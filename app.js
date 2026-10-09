@@ -531,7 +531,10 @@
   }
 
   function speakRepLeadIn(setText, repText, onReady) {
-    if (repLeadInTimer) clearTimeout(repLeadInTimer);
+    if (repLeadInTimer) {
+      clearTimeout(repLeadInTimer);
+      repLeadInTimer = null;
+    }
 
     const afterRep = () => {
       repLeadInTimer = setTimeout(() => {
@@ -546,7 +549,7 @@
       return;
     }
 
-    const utter = (text) => {
+    const makeUtterance = (text) => {
       const u = new SpeechSynthesisUtterance(text);
       const voice = getVoice();
       if (voice && !isIOS) u.voice = voice;
@@ -558,10 +561,19 @@
     };
 
     const sayRep = () => {
-      const u = utter(repText);
-      u.onend = afterRep;
-      u.onerror = afterRep;
+      const u = makeUtterance(repText);
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (repLeadInTimer) clearTimeout(repLeadInTimer);
+        repLeadInTimer = null;
+        afterRep();
+      };
+      u.onend = finish;
+      u.onerror = finish;
       window.speechSynthesis.speak(u);
+      repLeadInTimer = setTimeout(finish, 1800);
     };
 
     if (!setText) {
@@ -569,15 +581,21 @@
       return;
     }
 
-    const u = utter(setText);
-    u.onend = () => {
+    const u = makeUtterance(setText);
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (repLeadInTimer) clearTimeout(repLeadInTimer);
       repLeadInTimer = setTimeout(() => {
         repLeadInTimer = null;
         sayRep();
       }, 380);
     };
-    u.onerror = u.onend;
+    u.onend = finish;
+    u.onerror = finish;
     window.speechSynthesis.speak(u);
+    repLeadInTimer = setTimeout(finish, 1800);
   }
 
   function stopSpeech() {
